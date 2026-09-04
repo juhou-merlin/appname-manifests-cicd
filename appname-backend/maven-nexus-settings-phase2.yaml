@@ -1,0 +1,42 @@
+# Phase 2 用。Nexus Service FQDN 確定後に Placeholder を置換し、
+# 既存 maven-proxy-settings の proxies / nonProxyHosts を保持したまま適用する。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maven-proxy-settings
+  labels:
+    app.kubernetes.io/part-of: appname-cicd-test
+data:
+  settings.xml: |
+    <settings>
+      <proxies>
+        <proxy>
+          <id>customer-egress-proxy</id>
+          <active>true</active>
+          <protocol>http</protocol>
+          <host>egress-proxy.appname-pipelines-dev.svc.cluster.local</host>
+          <port>3128</port>
+          <nonProxyHosts>localhost|127.0.0.1|*.svc|*.cluster.local|10.*|172.30.*</nonProxyHosts>
+        </proxy>
+      </proxies>
+      <mirrors>
+        <mirror>
+          <id>nexus-maven-public</id>
+          <name>Nexus Maven Public</name>
+          <url>http://__NEXUS_SERVICE_FQDN__:8081/repository/maven-public/</url>
+          <mirrorOf>*</mirrorOf>
+        </mirror>
+      </mirrors>
+      <servers>
+        <server>
+          <id>nexus-maven-public</id>
+          <username>${env.NEXUS_USERNAME}</username>
+          <password>${env.NEXUS_PASSWORD}</password>
+        </server>
+        <server>
+          <id>nexus-maven-publish</id>
+          <username>${env.NEXUS_USERNAME}</username>
+          <password>${env.NEXUS_PASSWORD}</password>
+        </server>
+      </servers>
+    </settings>

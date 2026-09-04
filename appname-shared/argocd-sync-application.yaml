@@ -1,0 +1,59 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: argocd-sync-application
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  description: >-
+    Argo CD Application の同期操作を開始し、同期完了を待機する。
+  params:
+    - name: ARGOCD_APPLICATION_NAME
+      type: string
+    - name: ARGOCD_APPLICATION_NAMESPACE
+      type: string
+    - name: SYNC_TIMEOUT
+      type: string
+      default: 300s
+    - name: OC_IMAGE
+      type: string
+      default: quay.io/openshift/origin-cli:4.22
+  steps:
+    - name: sync
+      image: $(params.OC_IMAGE)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        application="$(params.ARGOCD_APPLICATION_NAME)"
+        application_namespace="$(params.ARGOCD_APPLICATION_NAMESPACE)"
+        timeout="$(params.SYNC_TIMEOUT)"
+
+        oc get application.argoproj.io "${application}" -n "${application_namespace}" >/dev/null
+        oc patch application.argoproj.io "${application}" -n "${application_namespace}" \
+          --type=merge \
+          -p '{"operation":{"initiatedBy":{"username":"tekton-pipeline"},"sync":{}}}' >/dev/null
+
+        deadline=$(( $(date +%s) + ${timeout%s} ))
+        operation_seen=false
+        while [ "$(date +%s)" -lt "${deadline}" ]; do
+          operation="$(oc get application.argoproj.io "${application}" -n "${application_namespace}" -o jsonpath='{.operation.sync}' 2>/dev/null || true)"
+          phase="$(oc get application.argoproj.io "${application}" -n "${application_namespace}" -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)"
+          sync_status="$(oc get application.argoproj.io "${application}" -n "${application_namespace}" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+
+          if [ -n "${operation}" ] || [ "${phase}" = "Running" ]; then
+            operation_seen=true
+          fi
+          if [ "${operation_seen}" = true ] && [ "${phase}" = "Succeeded" ] && [ "${sync_status}" = "Synced" ]; then
+            echo "Argo CD Application synchronized: ${application_namespace}/${application}"
+            exit 0
+          fi
+          if [ "${operation_seen}" = true ] && [ "${phase}" = "Failed" ]; then
+            echo "Argo CD Application sync failed: ${application_namespace}/${application}" >&2
+            exit 1
+          fi
+          sleep 5
+        done
+
+        echo "Timed out waiting for Argo CD Application sync: ${application_namespace}/${application}" >&2
+        exit 1

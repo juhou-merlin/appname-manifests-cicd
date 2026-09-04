@@ -1,0 +1,176 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: appname-frontend-pipeline
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+  annotations:
+    tekton.dev/displayName: "フロントエンド CI/CD パイプライン（Nexus / SonarQube対応）"
+spec:
+  description: |
+    フロントエンド（Nuxt4/Vue3）のCI/CDパイプライン。
+    Nexus を使用した npm Build/Test、SonarQube Analysis、S2I Image Buildを実行する。
+  params:
+    - name: git-url
+      description: AppNameフロントエンドソースコードリポジトリのURL
+      type: string
+      default: "https://github.com/example-org/appname-frontend.git"
+    - name: git-revision
+      description: ビルド対象のGitリビジョン（ブランチ名 or コミットSHA）
+      type: string
+      default: "main"
+    - name: git-ref
+      description: "Push イベントのGit参照（例: refs/heads/main）"
+      type: string
+      default: "refs/heads/main"
+    - name: git-url-manifests
+      description: アプリ用マニフェストリポジトリ（manifests-app）のURL
+      type: string
+      default: "https://github.com/example-org/appname-manifests-gitops.git"
+    - name: nexus-npm-group-url
+      description: Nexus npm Group Repository URL
+      type: string
+      default: "http://nexus-repo-service.nexus.svc.cluster.local:8081/repository/npm-public/"
+    - name: sonar-host-url
+      description: SonarQube の Cluster 内 Service URL
+      type: string
+      default: "http://sonarqube.sonarqube.svc.cluster.local:9000"
+    - name: sonar-project-key
+      description: SonarQube Frontend Project Key
+      type: string
+      default: "appname-frontend"
+    - name: update-manifest-enabled
+      description: テスト時に Manifest Repository 更新を無効化する
+      type: string
+      default: "false"
+    - name: argocd-application-name
+      description: Manifest 更新後に同期する Argo CD Application 名
+      type: string
+      default: "appname-dev"
+    - name: argocd-application-namespace
+      description: Argo CD Application が作成されている Namespace
+      type: string
+      default: "appname-argocd-dev"
+  results:
+    - name: IMAGE_URL
+      description: Commit SHA タグ付きの ImageStream リポジトリ URL
+      value: $(tasks.build-image.results.IMAGE_URL)
+    - name: IMAGE_TAG
+      description: 追加した ImageStream Tag
+      value: $(tasks.build-image.results.IMAGE_TAG)
+  workspaces:
+    - name: shared-workspace
+      description: ソースコードとビルド成果物を共有するワークスペース
+    - name: npm-cache
+      description: npmパッケージキャッシュ用ワークスペース（PVC）
+  tasks:
+    - name: fetch-source
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+      params:
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+        - name: SUBDIRECTORY
+          value: "source"
+        - name: DELETE_EXISTING
+          value: "true"
+
+    - name: build-and-test
+      runAfter:
+        - fetch-source
+      taskRef:
+        name: npm-build-test
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+        - name: npm-cache
+          workspace: npm-cache
+      params:
+        - name: NEXUS_NPM_GROUP_URL
+          value: "$(params.nexus-npm-group-url)"
+
+    - name: sonarqube-analysis
+      runAfter:
+        - build-and-test
+      taskRef:
+        name: sonarqube-cli-scan
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+        - name: sonar-cache
+          workspace: npm-cache
+      params:
+        - name: SONAR_HOST_URL
+          value: "$(params.sonar-host-url)"
+        - name: PROJECT_KEY
+          value: "$(params.sonar-project-key)"
+
+    - name: build-image
+      runAfter:
+        - sonarqube-analysis
+      when:
+        - input: "$(params.git-ref)"
+          operator: in
+          values: ["main", "refs/heads/main"]
+      taskRef:
+        name: s2i-nodejs-build
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+      params:
+        - name: COMMIT_SHA
+          value: "$(tasks.fetch-source.results.COMMIT)"
+
+    - name: update-manifest
+      runAfter:
+        - build-image
+      when:
+        - input: "$(params.git-ref)"
+          operator: in
+          values: ["main", "refs/heads/main"]
+        - input: "$(params.update-manifest-enabled)"
+          operator: in
+          values: ["true"]
+      taskRef:
+        name: git-update-manifest
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+      params:
+        - name: GIT_REPOSITORY
+          value: $(params.git-url-manifests)
+        - name: APP_NAME
+          value: "frontend"
+        - name: IMAGE_TAG
+          value: "$(tasks.fetch-source.results.COMMIT)"
+        - name: GIT_CREDENTIALS_SECRET
+          value: "github-credentials"
+        - name: KUSTOMIZATION_PATH
+          value: "overlays/dev"
+
+    - name: argocd-sync
+      runAfter:
+        - update-manifest
+      when:
+        - input: "$(params.update-manifest-enabled)"
+          operator: in
+          values: ["true"]
+      taskRef:
+        name: argocd-sync-application
+      params:
+        - name: ARGOCD_APPLICATION_NAME
+          value: "$(params.argocd-application-name)"
+        - name: ARGOCD_APPLICATION_NAMESPACE
+          value: "$(params.argocd-application-namespace)"

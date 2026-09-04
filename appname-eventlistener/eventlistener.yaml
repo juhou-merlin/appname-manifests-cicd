@@ -1,0 +1,240 @@
+# GitHub Push Webhook を受信し、許可済みの source repository ごとに
+# 固定された PipelineRun を作成する。Webhook 本文から namespace / Pipeline 名を
+# 受け取らないため、呼出元による実行先の変更を防止できる。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cicd-eventlistener
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cicd-eventlistener
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+rules:
+  - apiGroups: [tekton.dev]
+    resources: [pipelineruns]
+    verbs: [create]
+  # EventListener runtime が同一 namespace の Trigger 定義を監視する。
+  - apiGroups: [triggers.tekton.dev]
+    resources: [eventlisteners, triggerbindings, interceptors, triggertemplates, triggers]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [serviceaccounts]
+    verbs: [impersonate]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cicd-eventlistener
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cicd-eventlistener
+subjects:
+  - kind: ServiceAccount
+    name: cicd-eventlistener
+---
+# ClusterInterceptor は cluster-scoped resource のため、GitHub/CEL Interceptor
+# の解決に必要な read-only 権限だけを別途付与する。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cicd-eventlistener-cluster-interceptors
+rules:
+  - apiGroups: [triggers.tekton.dev]
+    resources: [clusterinterceptors]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cicd-eventlistener-cluster-interceptors
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cicd-eventlistener-cluster-interceptors
+subjects:
+  - kind: ServiceAccount
+    name: cicd-eventlistener
+    namespace: appname-pipelines-dev
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: appname-github-push-binding
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  params:
+    - name: git-url
+      value: $(body.repository.clone_url)
+    - name: git-revision
+      value: $(body.after)
+    - name: git-ref
+      value: $(body.ref)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: appname-backend-github-push
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  params:
+    - name: git-url
+    - name: git-revision
+    - name: git-ref
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: appname-backend-webhook-
+        namespace: appname-pipelines-dev
+        labels:
+          app.kubernetes.io/part-of: appname-cicd
+          triggers.tekton.dev/eventlistener: cicd-github-listener
+          appname-cicd/source: appname-backend
+      spec:
+        pipelineRef:
+          name: appname-backend-pipeline
+        taskRunTemplate:
+          serviceAccountName: pipeline
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+          - name: git-ref
+            value: $(tt.params.git-ref)
+          - name: sonar-host-url
+            value: http://sonarqube.sonarqube.svc.cluster.local:9000
+          - name: sonar-project-key
+            value: appname-backend
+          - name: git-url-manifests
+            value: https://github.com/example-org/appname-manifests-gitops.git
+          - name: update-manifest-enabled
+            value: "true"
+          - name: argocd-application-name
+            value: appname-dev
+          - name: argocd-application-namespace
+            value: appname-argocd-dev
+        workspaces:
+          - name: shared-workspace
+            persistentVolumeClaim:
+              claimName: appname-backend-pipeline-pvc
+          - name: maven-cache
+            emptyDir: {}
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: appname-frontend-github-push
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  params:
+    - name: git-url
+    - name: git-revision
+    - name: git-ref
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: appname-frontend-webhook-
+        namespace: appname-pipelines-dev
+        labels:
+          app.kubernetes.io/part-of: appname-cicd
+          triggers.tekton.dev/eventlistener: cicd-github-listener
+          appname-cicd/source: appname-frontend
+      spec:
+        pipelineRef:
+          name: appname-frontend-pipeline
+        taskRunTemplate:
+          serviceAccountName: pipeline
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+          - name: git-ref
+            value: $(tt.params.git-ref)
+          - name: nexus-npm-group-url
+            value: http://nexus-repo-service.nexus.svc.cluster.local:8081/repository/npm-public/
+          - name: sonar-host-url
+            value: http://sonarqube.sonarqube.svc.cluster.local:9000
+          - name: sonar-project-key
+            value: appname-frontend
+          - name: git-url-manifests
+            value: https://github.com/example-org/appname-manifests-gitops.git
+          - name: update-manifest-enabled
+            value: "true"
+          - name: argocd-application-name
+            value: appname-dev
+          - name: argocd-application-namespace
+            value: appname-argocd-dev
+        workspaces:
+          - name: shared-workspace
+            persistentVolumeClaim:
+              claimName: appname-frontend-pipeline-pvc
+          - name: npm-cache
+            emptyDir: {}
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: cicd-github-listener
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  serviceAccountName: cicd-eventlistener
+  triggers:
+    - name: appname-backend-main
+      interceptors:
+        - ref:
+            name: cel
+          params:
+            - name: filter
+              value: "body.ref == 'refs/heads/main' && body.repository.clone_url == 'https://github.com/example-org/appname-backend.git'"
+      bindings:
+        - ref: appname-github-push-binding
+      template:
+        ref: appname-backend-github-push
+    - name: appname-frontend-main
+      interceptors:
+        - ref:
+            name: cel
+          params:
+            - name: filter
+              value: "body.ref == 'refs/heads/main' && body.repository.clone_url == 'https://github.com/example-org/appname-frontend.git'"
+      bindings:
+        - ref: appname-github-push-binding
+      template:
+        ref: appname-frontend-github-push
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: cicd-github-webhook
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  to:
+    kind: Service
+    name: el-cicd-github-listener
+  port:
+    targetPort: http-listener
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

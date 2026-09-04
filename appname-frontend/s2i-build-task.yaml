@@ -1,0 +1,55 @@
+# Runtime Artifact を OpenShift Node.js Binary Source-to-Image に渡す最小 Task
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: s2i-nodejs-build
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  params:
+    - name: COMMIT_SHA
+      type: string
+      description: Clone Task が取得した Commit SHA
+    - name: OC_IMAGE
+      type: string
+      default: quay.io/openshift/origin-cli:4.22
+      description: クラスターの oc API と互換性のある oc CLI イメージ
+  workspaces:
+    - name: source
+  results:
+    - name: IMAGE_URL
+      description: Commit SHA タグ付きの ImageStream リポジトリ URL
+    - name: IMAGE_TAG
+      description: 追加した ImageStream Tag
+  steps:
+    - name: start-binary-s2i
+      image: $(params.OC_IMAGE)
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: HOME
+          value: /tmp
+        - name: KUBECONFIG
+          value: /tmp/kubeconfig
+        - name: DOCKER_CONFIG
+          value: /tmp/docker
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        RUNTIME_DIR="$(workspaces.source.path)/source/.s2i-input"
+        test -f "${RUNTIME_DIR}/package.json"
+        test -f "${RUNTIME_DIR}/.output/server/index.mjs"
+        oc login --token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+          --server=https://kubernetes.default.svc \
+          --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+          --namespace="$(context.taskRun.namespace)" >/dev/null
+        oc start-build appname-frontend-s2i \
+          --from-dir="${RUNTIME_DIR}" \
+          --wait=true \
+          --follow
+        oc tag appname-frontend:latest "appname-frontend:$(params.COMMIT_SHA)"
+        IMAGE_REPOSITORY="$(oc get imagestream appname-frontend \
+          -o jsonpath='{.status.dockerImageRepository}')"
+        test -n "${IMAGE_REPOSITORY}"
+        printf '%s:%s' "${IMAGE_REPOSITORY}" "$(params.COMMIT_SHA)" \
+          | tee "$(results.IMAGE_URL.path)"
+        printf '%s' "$(params.COMMIT_SHA)" > "$(results.IMAGE_TAG.path)"

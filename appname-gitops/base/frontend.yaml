@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: appname-frontend
+  labels:
+    app: appname-frontend
+    app.kubernetes.io/part-of: appname
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: appname-frontend
+  template:
+    metadata:
+      labels:
+        app: appname-frontend
+    spec:
+      containers:
+        - name: appname-frontend
+          image: appname-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 300m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: appname-frontend
+  labels:
+    app: appname-frontend
+    app.kubernetes.io/part-of: appname
+spec:
+  selector:
+    app: appname-frontend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: appname-frontend
+  labels:
+    app: appname-frontend
+    app.kubernetes.io/part-of: appname
+spec:
+  to:
+    kind: Service
+    name: appname-frontend
+  port:
+    targetPort: http
+  tls:
+    termination: edge

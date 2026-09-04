@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maven-proxy-settings
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+data:
+  settings.xml: |
+    <settings>
+      <proxies>
+        <proxy>
+          <id>customer-egress-proxy</id>
+          <active>true</active>
+          <protocol>http</protocol>
+          <host>egress-proxy.appname-pipelines-dev.svc.cluster.local</host>
+          <port>3128</port>
+          <nonProxyHosts>localhost|127.0.0.1|*.svc|*.cluster.local|10.*|172.30.*</nonProxyHosts>
+        </proxy>
+      </proxies>
+      <mirrors>
+        <mirror>
+          <id>nexus-maven-public</id>
+          <name>Nexus Maven Public</name>
+          <url>http://nexus-repo-service.nexus.svc.cluster.local:8081/repository/maven-public/</url>
+          <mirrorOf>*</mirrorOf>
+        </mirror>
+      </mirrors>
+    </settings>

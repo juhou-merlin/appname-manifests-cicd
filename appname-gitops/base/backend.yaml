@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: appname-backend
+  labels:
+    app: appname-backend
+    app.kubernetes.io/part-of: appname
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: appname-backend
+  template:
+    metadata:
+      labels:
+        app: appname-backend
+    spec:
+      containers:
+        - name: appname-backend
+          image: appname-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: appname-backend-config
+          startupProbe:
+            httpGet:
+              path: /api/hello
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/hello
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /api/hello
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 200m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: appname-backend
+  labels:
+    app: appname-backend
+    app.kubernetes.io/part-of: appname
+spec:
+  selector:
+    app: appname-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: appname-backend
+  labels:
+    app: appname-backend
+    app.kubernetes.io/part-of: appname
+spec:
+  to:
+    kind: Service
+    name: appname-backend
+  port:
+    targetPort: http
+  tls:
+    termination: edge

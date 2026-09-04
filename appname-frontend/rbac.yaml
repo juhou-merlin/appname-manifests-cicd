@@ -1,0 +1,36 @@
+# デフォルトの Tekton Pipeline SA に Binary Build 用の最小権限を付与する。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: appname-frontend-s2i
+rules:
+  - apiGroups: [build.openshift.io]
+    resources: [buildconfigs]
+    verbs: [get]
+  - apiGroups: [build.openshift.io]
+    resources: [buildconfigs/instantiatebinary]
+    verbs: [create]
+  - apiGroups: [build.openshift.io]
+    resources: [builds]
+    verbs: [get, list, watch]
+  - apiGroups: [build.openshift.io]
+    resources: [builds/log]
+    verbs: [get]
+  - apiGroups: [image.openshift.io]
+    resources: [imagestreams]
+    verbs: [get]
+  - apiGroups: [image.openshift.io]
+    resources: [imagestreamtags]
+    verbs: [get, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: appname-frontend-s2i
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: appname-frontend-s2i
+subjects:
+  - kind: ServiceAccount
+    name: pipeline

@@ -1,0 +1,24 @@
+# Argo CD AppProject: AppName Application
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: appname-app
+  namespace: appname-argocd-dev
+  labels:
+    app.kubernetes.io/part-of: appname
+spec:
+  description: "AppName Project のアプリケーションデプロイ用プロジェクト"
+  sourceRepos:
+    - "https://github.com/example-org/appname-manifests-gitops.git"
+  destinations:
+    - server: "https://kubernetes.default.svc"
+      namespace: "appname-apps-dev"
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: "apps"
+      kind: "*"
+    - group: "route.openshift.io"
+      kind: "Route"
+  orphanedResources:
+    warn: false

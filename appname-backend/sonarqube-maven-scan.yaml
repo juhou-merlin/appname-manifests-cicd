@@ -1,0 +1,64 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: sonarqube-maven-scan
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  description: |-
+    Maven Scanner で Backend を解析し、SonarQube Quality Gate の完了を待機する。
+    Maven Plugin は maven-proxy-settings の Nexus Mirror から取得する。
+  params:
+    - name: SONAR_HOST_URL
+      type: string
+      default: http://sonarqube.sonarqube.svc.cluster.local:9000
+    - name: PROJECT_KEY
+      type: string
+      default: appname-backend
+    - name: MAVEN_IMAGE
+      type: string
+      default: registry.access.redhat.com/ubi9/openjdk-25:latest
+    - name: SONAR_MAVEN_PLUGIN_VERSION
+      type: string
+      default: 5.5.0.6356
+  workspaces:
+    - name: source
+    - name: maven-cache
+  volumes:
+    - name: settings
+      configMap:
+        name: maven-proxy-settings
+        items:
+          - key: settings.xml
+            path: settings.xml
+  steps:
+    - name: analyze
+      image: $(params.MAVEN_IMAGE)
+      workingDir: $(workspaces.source.path)/source
+      volumeMounts:
+        - name: settings
+          mountPath: /etc/appname-maven
+          readOnly: true
+      env:
+        - name: SONAR_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-backend-auth
+              key: SONAR_TOKEN
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        test -n "${SONAR_TOKEN}"
+        test -f ./mvnw
+        test -f target/site/jacoco/jacoco.xml
+        LOCAL_REPOSITORY="$(workspaces.maven-cache.path)/.m2/repository"
+        mkdir -p "${LOCAL_REPOSITORY}"
+        ./mvnw -B \
+          -s /etc/appname-maven/settings.xml \
+          -Dmaven.repo.local="${LOCAL_REPOSITORY}" \
+          -Dsonar.projectKey="$(params.PROJECT_KEY)" \
+          -Dsonar.host.url="$(params.SONAR_HOST_URL)" \
+          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+          -Dsonar.qualitygate.wait=true \
+          "org.sonarsource.scanner.maven:sonar-maven-plugin:$(params.SONAR_MAVEN_PLUGIN_VERSION):sonar"

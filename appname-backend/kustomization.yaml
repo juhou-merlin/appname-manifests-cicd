@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: appname-pipelines-dev
+resources:
+  - ../appname-shared
+  - pipeline.yaml
+  - maven-build-test.yaml
+  - sonarqube-maven-scan.yaml
+  - s2i-buildconfig.yaml
+  - s2i-build-task.yaml
+  - git-update-manifest.yaml
+  - maven-proxy-settings.yaml
+  - pvc.yaml
+  - rbac.yaml

@@ -1,0 +1,64 @@
+# AppName Frontend の npm Build/Test
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: npm-build-test
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  description: |-
+    Nuxt SPA の npm ci、build、coverage test、typecheck を実行し、
+    Node.js S2I に渡す Runtime Artifact を準備する。
+    SonarQube、Playwright E2E、format:check は実行しない。
+  params:
+    - name: NODE_IMAGE
+      type: string
+      default: registry.access.redhat.com/ubi9/nodejs-24:latest
+      description: Node.js 24 の Build 用イメージ
+    - name: NEXUS_NPM_GROUP_URL
+      type: string
+      default: http://nexus-repo-service.nexus.svc.cluster.local:8081/repository/npm-public/
+      description: Nexus npm Group Repository URL
+  workspaces:
+    - name: source
+    - name: npm-cache
+  steps:
+    - name: npm-build-test
+      image: $(params.NODE_IMAGE)
+      workingDir: $(workspaces.source.path)/source
+      env:
+        - name: npm_config_cache
+          value: $(workspaces.npm-cache.path)/.npm
+        - name: npm_config_registry
+          value: $(params.NEXUS_NPM_GROUP_URL)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        mkdir -p "${npm_config_cache}"
+        npm ci --cache "${npm_config_cache}" --registry "${npm_config_registry}"
+        npm run build
+        npm run test:coverage
+        npm run typecheck
+        test -f ".output/server/index.mjs" || {
+          echo "Nuxt の Node.js Server が見つかりません: .output/server/index.mjs" >&2
+          echo "package.json の build が nuxt build を実行することを確認してください。" >&2
+          exit 1
+        }
+        test -d ".output/public"
+        test -n "$(find ".output/public" -mindepth 1 -print -quit)"
+
+        RUNTIME_DIR=".s2i-input"
+        test ! -e "${RUNTIME_DIR}" || {
+          echo "Runtime Artifact ディレクトリがすでに存在します: ${RUNTIME_DIR}" >&2
+          exit 1
+        }
+        mkdir -p "${RUNTIME_DIR}"
+        cp -a ".output" "${RUNTIME_DIR}/.output"
+        printf '%s\n' \
+          '{' \
+          '  "name": "appname-frontend-runtime",' \
+          '  "private": true,' \
+          '  "scripts": {' \
+          '    "start": "node .output/server/index.mjs"' \
+          '  }' \
+          '}' > "${RUNTIME_DIR}/package.json"

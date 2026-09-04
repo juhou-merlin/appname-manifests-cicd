@@ -1,0 +1,24 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: appname-pipeline-argocd-sync
+  namespace: appname-argocd-dev
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    resourceNames: [appname-dev]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: appname-pipeline-argocd-sync
+  namespace: appname-argocd-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: appname-pipeline-argocd-sync
+subjects:
+  - kind: ServiceAccount
+    name: pipeline
+    namespace: appname-pipelines-dev

@@ -1,0 +1,22 @@
+# Argo CD Application: AppName 開発環境
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: appname-dev
+  namespace: appname-argocd-dev
+  labels:
+    app.kubernetes.io/part-of: appname
+    argocd.argoproj.io/managed-by: appname-gitops
+spec:
+  project: appname-app
+  source:
+    repoURL: https://github.com/example-org/appname-manifests-gitops.git
+    path: overlays/dev
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: appname-apps-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

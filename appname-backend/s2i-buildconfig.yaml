@@ -1,0 +1,35 @@
+# OpenShift が実行する本物の Binary Source-to-Image Build
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: appname-backend
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: appname-backend-s2i
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  source:
+    type: Binary
+    # ConfigMapをVolume Mountせず、Build時だけSource設定としてコピーする
+    configMaps:
+      - configMap:
+          name: maven-proxy-settings
+        destinationDir: configuration
+  strategy:
+    type: Source
+    sourceStrategy:
+      from:
+        kind: DockerImage
+        name: registry.access.redhat.com/ubi9/openjdk-25:latest
+      env:
+        - name: MAVEN_SETTINGS_XML
+          value: /opt/app-root/src/configuration/settings.xml
+  output:
+    to:
+      kind: ImageStreamTag
+      name: appname-backend:latest

@@ -1,0 +1,89 @@
+# AppName 専用の Argo CD Instance。共有 openshift-gitops Instance と
+# Application / AppProject / UI Route を分離する。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: appname-argocd-dev
+  labels:
+    app.kubernetes.io/part-of: appname
+---
+apiVersion: argoproj.io/v1beta1
+kind: ArgoCD
+metadata:
+  name: appname-gitops
+  namespace: appname-argocd-dev
+  labels:
+    app.kubernetes.io/part-of: appname
+spec:
+  # Multi-instance 環境で Application tracking を衝突させない。
+  installationID: appname-dev
+  applicationInstanceLabelKey: argocd.argoproj.io/instance
+  namespaceManagement:
+    - name: appname-apps-dev
+      allowManagedBy: true
+  ha:
+    enabled: false
+  applicationSet:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 50Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    webhookServer:
+      ingress:
+        enabled: false
+      route:
+        enabled: false
+  controller:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 100Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+  repo:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 50Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  redis:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 10Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+  server:
+    route:
+      enabled: true
+    resources:
+      requests:
+        cpu: 10m
+        memory: 100Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  sso:
+    provider: dex
+    dex:
+      openShiftOAuth: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 100Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+  monitoring:
+    enabled: false
+  notifications:
+    enabled: false
+  prometheus:
+    enabled: false

@@ -1,0 +1,11 @@
+# OpenShift Console の Application Menu から AppName 専用 Argo CD を開く入口。
+apiVersion: console.openshift.io/v1
+kind: ConsoleLink
+metadata:
+  name: appname-argocd
+spec:
+  href: https://appname-gitops-server-appname-argocd-dev.apps.example.invalid/
+  location: ApplicationMenu
+  text: AppName Argo CD
+  applicationMenu:
+    section: Red Hat Applications

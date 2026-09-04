@@ -1,0 +1,50 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: sonarqube-cli-scan
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  description: |-
+    SonarSource 公式 Scanner CLI Image で Frontend と LCOV Coverage を解析し、
+    SonarQube Quality Gate の完了を待機する。
+  params:
+    - name: SONAR_HOST_URL
+      type: string
+      default: http://sonarqube.sonarqube.svc.cluster.local:9000
+    - name: PROJECT_KEY
+      type: string
+      default: appname-frontend
+    - name: SCANNER_IMAGE
+      type: string
+      default: sonarsource/sonar-scanner-cli:12.1.0.3233_8.0.1
+  workspaces:
+    - name: source
+    - name: sonar-cache
+  steps:
+    - name: analyze
+      image: $(params.SCANNER_IMAGE)
+      workingDir: $(workspaces.source.path)/source
+      env:
+        - name: SONAR_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: sonarqube-frontend-auth
+              key: SONAR_TOKEN
+        - name: SONAR_HOST_URL
+          value: $(params.SONAR_HOST_URL)
+        - name: SONAR_USER_HOME
+          value: $(workspaces.sonar-cache.path)/.sonar
+      script: |
+        #!/bin/sh
+        set -eu
+        test -n "${SONAR_TOKEN}"
+        test -f coverage/lcov.info
+        mkdir -p "${SONAR_USER_HOME}/cache"
+        sonar-scanner \
+          -Dsonar.projectKey="$(params.PROJECT_KEY)" \
+          -Dsonar.sources=app \
+          -Dsonar.tests=test \
+          -Dsonar.exclusions='.nuxt/**,.output/**,.s2i-input/**,node_modules/**,coverage/**' \
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+          -Dsonar.qualitygate.wait=true

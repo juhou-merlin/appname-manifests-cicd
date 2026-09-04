@@ -1,0 +1,53 @@
+# AppName Backend Maven ビルドとテスト
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: maven-build-test-with-proxy
+  labels:
+    app.kubernetes.io/part-of: appname-cicd
+spec:
+  description: |-
+    Nexus Maven Group を Mirror として Maven Wrapper で clean verify を実行する。
+    verify により Unit Test、Checkstyle、SpotBugs、JaCoCo、Package を実行する。
+  params:
+    - name: MAVEN_IMAGE
+      type: string
+      default: registry.access.redhat.com/ubi9/openjdk-25:latest
+      description: Maven 実行用の OpenJDK 25 イメージ
+    - name: GOALS
+      type: string
+      default: clean verify
+      description: Maven goals
+  workspaces:
+    - name: source
+    - name: maven-cache
+  volumes:
+    - name: settings
+      configMap:
+        name: maven-proxy-settings
+        optional: true
+        items:
+          - key: settings.xml
+            path: settings.xml
+  steps:
+    - name: build-and-test
+      image: $(params.MAVEN_IMAGE)
+      workingDir: $(workspaces.source.path)/source
+      volumeMounts:
+        - name: settings
+          mountPath: /etc/appname-maven
+          readOnly: true
+      env:
+        - name: MAVEN_OPTS
+          value: -Dmaven.repo.local=$(workspaces.maven-cache.path)/.m2/repository
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        SETTINGS_FILE=/etc/appname-maven/settings.xml
+        LOCAL_REPOSITORY="$(workspaces.maven-cache.path)/.m2/repository"
+        test -r "${SETTINGS_FILE}"
+        test -f ./mvnw
+        mkdir -p "${LOCAL_REPOSITORY}"
+        ./mvnw -B $(params.GOALS) \
+          -s "${SETTINGS_FILE}" \
+          -Dmaven.repo.local="${LOCAL_REPOSITORY}"
