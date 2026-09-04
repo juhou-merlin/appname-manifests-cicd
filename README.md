@@ -8,13 +8,13 @@ OpenShift 上で Backend / Frontend を Build、Test、Nexus Repository 経由�
 
 ## Version Branch
 
-| Branch | 内容 | 前版との差分 |
-| --- | --- | --- |
-| `0.1` | 基本 CI/CD 構成 | <ul><li>Backend / Frontend の Build、Test、S2I、GitOps 基盤</li></ul> |
-| `1.0` | Nexus Repository / SonarQube 連携 | <ul><li>Nexus 経由の Maven / npm Dependency 取得</li><li>SonarQube Analysis と Quality Gate</li></ul> |
-| `1.1` | GitOps 即時同期 | <ul><li>`update-manifest` 後に Argo CD Application Sync を実行</li><li>共用 Task を `appname-shared/` に集約</li></ul> |
-| `1.2` | GitHub EventListener | <ul><li>Source Repository URL と branch による固定 Pipeline ルーティング</li><li>Webhook body から任意 Namespace / Pipeline を指定不可</li></ul> |
-| `1.3` / `main` | 専用 Argo CD Instance | <ul><li>専用 Argo CD Instance と ConsoleLink を追加</li><li>小さい resource request を既定化</li></ul> |
+| Version | Branch | 内容 | 前版との差分 |
+| --- | --- | --- | --- |
+| `0.1` | `0.1` | 基本 CI/CD 構成 | <ul><li>Backend / Frontend の Build、Test、S2I、GitOps 基盤</li></ul> |
+| `1.0` | `1.0` | Nexus Repository / SonarQube 連携 | <ul><li>Nexus 経由の Maven / npm Dependency 取得</li><li>SonarQube Analysis と Quality Gate</li></ul> |
+| `1.1` | `1.1` | GitOps 即時同期 | <ul><li>`update-manifest` 後に Argo CD Application Sync を実行</li><li>共用 Task を `appname-shared/` に集約</li></ul> |
+| `1.2` | `1.2` | GitHub EventListener | <ul><li>Source Repository URL と branch による固定 Pipeline ルーティング</li><li>Webhook body から任意 Namespace / Pipeline を指定不可</li></ul> |
+| `1.3` | `1.3` / `main` | 専用 Argo CD Instance | <ul><li>専用 Argo CD Instance と ConsoleLink を追加</li><li>小さい resource request を既定化</li></ul> |
 
 ## Directory
 
