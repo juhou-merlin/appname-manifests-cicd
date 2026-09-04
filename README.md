@@ -4,7 +4,7 @@ OpenShift 上で Backend / Frontend を Build、Test、Nexus Repository 経由�
 
 この Repository には実在する組織名、Repository URL、クラスタ名、認証情報、顧客固有の環境設定を含めません。`example-org`、`appname-*`、`*.example.invalid` は導入先に合わせて置き換えてください。
 
-> Current template branch: `0.1`
+> Current template branch: `1.0`
 
 ## Version Branch
 
